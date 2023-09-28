@@ -1,3 +1,4 @@
+mod execute;
 
 use anyhow::Result;
 //use structopt::StructOpt;
@@ -6,13 +7,11 @@ use anyhow::Result;
 use hyper::service::{make_service_fn, service_fn};
 use hyper::{Body, Method, Request, Response, Server};
 use std::convert::Infallible;
-use std::fs::File;
-use std::os::unix::net::UnixListener;
+//use std::fs::File;
+use std::os::unix::net::{UnixListener};
+use std::io::{ErrorKind,Read};
 
-use serde::{Serialize, Deserialize};
-use serde_json;
-use std::process::Command;
-use shlex::Shlex;
+use crate::execute::*;
 /*
 #[derive(StructOpt, PartialEq, Debug, Serialize)]
 pub struct Daemon {
@@ -20,20 +19,6 @@ pub struct Daemon {
     pub verbose: u8,
 }
 */
-
-//Run Json Instance
-#[derive(Debug, Serialize, Deserialize)]
-struct Runj {
-    app_args: String,
-    image_url: String,
-    on_app_ready: String,
-    passphrase_file: String,
-    preserved_paths: String,
-    no_restore: bool,
-    allow_bad_image: bool,
-    leave_stopped: bool,
-    verbose: u8,
-}
 
 #[tokio::main]
 async fn main() {
@@ -52,82 +37,26 @@ async fn main() {
 }
 
 async fn handle_connection(req: Request<Body>) -> Result<Response<Body>, Infallible> {
+
     match (req.method(), req.uri().path()) {
-       
+        
         (&Method::POST, "/run") => {
             let body_bytes = hyper::body::to_bytes(req.into_body()).await.unwrap();
             let body_str = String::from_utf8(body_bytes.to_vec()).unwrap();
 
-            //call run and wait till app started
-            let r: Runj = serde_json::from_str(&body_str).unwrap();
-            //let splited_args: Vec<String> = Shlex::new(&r.app_args).collect();
-            let mut cmd = Command::new("fastfreeze");
-                    
-            cmd.arg("run");
-            
-            if r.image_url.as_str() != "" {
-                cmd.arg("--image-url").arg(&r.image_url); 
-            }
-            if r.on_app_ready.as_str() != ""{
-                cmd.arg("--on-app-ready").arg(&r.on_app_ready); 
-            }
-            if r.passphrase_file.as_str() != "" {
-                cmd.arg("--passphrase-file").arg(&r.passphrase_file); 
-            }
-            if r.preserved_paths.as_str() != "" {
-                cmd.arg("--preserve-path").arg(&r.preserved_paths); 
-            }
-            if r.no_restore {
-                cmd.arg("--no-restore");
-            }
-            if r.allow_bad_image {
-                cmd.arg("--allow-bad-image-version");
-            }
-            if r.leave_stopped {
-                cmd.arg("--leave-stoped");
-            }
-            let verbose = format!("-{}","v".repeat(r.verbose.into()));
-            if r.verbose!=0 {
-                cmd.arg(&verbose);
-            }
-            cmd.arg("--");
-            if r.app_args.as_str() != "" {
-                let splited_args: Vec<String> = Shlex::new(&r.app_args).collect();
-                for word in splited_args {
-                    cmd.arg(word);
-                }    
+            if run_execute(body_str)!=0 {
+               return Ok(Response::builder()
+                .status(hyper::StatusCode::INTERNAL_SERVER_ERROR)
+                .body(Body::from("Fail to spawn child to run FF\n"))
+                .unwrap());
             }
             
-             
-            let _ = cmd.spawn().expect("fastfreeze fail to start");
-            /*
-            {
-                let file = match File::create("/tmp/ff.sock") {
-                                    Ok(file) => file,
-                                    Err(err) => {
-                                        eprintln!("Error creating named pipe: {:?}", err);
-                                        return Ok(Response::builder()
-                                            .status(400)
-                                            .body(Body::from("Cannot create socket"))
-                                            .unwrap());
-                                    }
-                                };
-            }
-            */
-            let listener = match UnixListener::bind("/tmp/ff.sock") {
-                                Ok(sock) => sock,
-                                Err(e) => {
-                                    println!("Couldn't connect: {e:?}");
-                                    return Ok(Response::builder()
-                                        .status(400)
-                                        .body(Body::from("Cannot open socket"))
-                                        .unwrap());
-                                }
-                            };
-
-            match listener.accept() {
-                Ok(_) => println!("Got a connection, app started"),
-                Err(e) => println!("accept function failed: {e:?}"),
+            match wait_child() {
+                0 => (),
+                _ => return Ok(Response::builder()
+                .status(hyper::StatusCode::INTERNAL_SERVER_ERROR)
+                .body(Body::from(""))
+                .unwrap()) 
             }
 
             Ok(Response::builder()
@@ -137,10 +66,21 @@ async fn handle_connection(req: Request<Body>) -> Result<Response<Body>, Infalli
         },
         (&Method::POST, "/checkpoint") => {
             let body_bytes = hyper::body::to_bytes(req.into_body()).await.unwrap();
-            let _body_str = String::from_utf8(body_bytes.to_vec()).unwrap();
+            let body_str = String::from_utf8(body_bytes.to_vec()).unwrap();
             //let instance = new_chk_from_json(body_str);
-         
-            //call checkpoint and wait till checkpointed
+            if checkpoint_execute(body_str)!=0 {
+               return Ok(Response::builder()
+                .status(hyper::StatusCode::INTERNAL_SERVER_ERROR)
+                .body(Body::from("Fail to spawn child to checkpoint FF\n"))
+                .unwrap());
+            }
+            match wait_child() {
+                0 => (),
+                _ => return Ok(Response::builder()
+                .status(hyper::StatusCode::INTERNAL_SERVER_ERROR)
+                .body(Body::from(""))
+                .unwrap()) 
+            } 
 
             Ok(Response::builder()
                 .status(hyper::StatusCode::OK)
@@ -163,3 +103,54 @@ async fn shutdown_signal() {
         .await
         .expect("failed to install CTRL+C signal handler");
 }
+
+fn wait_child() -> u8 {
+    let socket_path = "/tmp/ff.sock";
+    match std::fs::remove_file(socket_path) {
+        Ok(_) => println!("Previous socket file removed"),
+        Err(e) if e.kind() == ErrorKind::NotFound => (),
+        _ => return 0,
+    }
+
+    let listener = match UnixListener::bind(socket_path) {
+        Ok(sock) => sock,
+        Err(e) => {
+            println!("Couldn't connect: {e:?}");
+            return 1;
+        }
+    };
+    println!("Waiting for child response");
+    match listener.accept() {
+        Ok((mut stream, _addr)) => {
+            let mut buffer = Vec::new();
+            let mut byte = [0; 1];
+            loop {
+                stream.read_exact(&mut byte).unwrap();
+                if byte[0] == b'\n' {  
+                    break;
+                }
+                buffer.push(byte[0]);
+            }
+            let message = String::from_utf8(buffer).unwrap();
+            if &message == "app_started" {
+                println!("Got a socket connection, app started"); 
+                return 0;                
+            } else if &message == "app_checkpointed" {
+                println!("Got a socket connection, app chekcpointed");
+                return 0;
+            } else if &message == "app_exiting" {
+                println!("App exited");
+                return 1;
+            } else {
+                println!("Unknown Message to sock");
+                return 1;
+            }
+        },
+        Err(e) => {
+                println!("accept function failed: {e:?}");
+                return 1;
+        },
+    }
+}
+
+          
