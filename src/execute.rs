@@ -8,25 +8,43 @@ use shlex::Shlex;
 struct Runj {
     app_args: String,
     image_url: String,
+    #[serde(default = "default_blanks")]
     on_app_ready: String,
+    #[serde(default = "default_blanks")]
     passphrase_file: String,
+    #[serde(default = "default_blanks")]
     preserved_paths: String,
+    #[serde(default = "default_false")]
     no_restore: bool,
+    #[serde(default = "default_false")]
     allow_bad_image: bool,
+    #[serde(default = "default_false")]
     leave_stopped: bool,
+    #[serde(default = "default_zero")]
     verbose: u8,
+    #[serde(default = "default_blankv")]
+    envs: Vec<String>,
 }
 
 //Checkpoint Json Instance
 #[derive(Debug, Serialize, Deserialize)]
 struct Checkpointj {
+    #[serde(default = "default_blanks")]
     image_url: String,
+    #[serde(default = "default_blanks")]
     passphrase_file: String,
+    #[serde(default = "default_blanks")]
     preserved_paths: String,
+    #[serde(default = "default_false")]
     leave_running: bool,
+    #[serde(default = "default_blanks")]
     num_shards: String,
+    #[serde(default = "default_blanks")]
     cpu_budget: String,
+    #[serde(default = "default_zero")]
     verbose: u8,
+    #[serde(default = "default_blankv")]
+    envs: Vec<String>,
 }
 
 pub fn run_execute(body_str: String) -> u8 {
@@ -69,6 +87,11 @@ pub fn run_execute(body_str: String) -> u8 {
             cmd.arg(word);
         }    
     } 
+
+    for env in r.envs.into_iter() {
+        let parts: Vec<&str> = env.split('=').collect();
+        cmd.env(parts[0],parts[1]);
+    }
         
     match cmd.spawn() {
         Ok(_) => {
@@ -116,6 +139,11 @@ pub fn checkpoint_execute(body_str: String) -> u8 {
         cmd.arg(&verbose);
     }
 
+    for env in r.envs.into_iter() {
+        let parts: Vec<&str> = env.split('=').collect();
+        cmd.env(parts[0],parts[1]);
+    }
+
     match cmd.spawn() {
         Ok(_) => {
             println!("FF chk spawned successfully");
@@ -128,4 +156,17 @@ pub fn checkpoint_execute(body_str: String) -> u8 {
     }
 }
 
+fn default_blanks() -> String {
+    "".to_string()
+}
 
+fn default_false() -> bool {
+    false
+}
+
+fn default_zero() -> u8 {
+    0
+}
+fn default_blankv() -> Vec<String> {
+    vec![]
+}
