@@ -136,7 +136,7 @@ fn wait_child() -> u8 {
                 println!("Got a socket connection, app started"); 
                 return 0;                
             } else if &message == "app_checkpointed" {
-                println!("Got a socket connection, app chekcpointed");
+                println!("Got a socket connection, app checkpointed");
                 return 0;
             } else if &message == "app_exiting" {
                 println!("App exited");
