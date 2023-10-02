@@ -120,6 +120,18 @@ fn wait_child() -> u8 {
         }
     };
     println!("Waiting for child response");
+    let listener_copy = listener.try_clone().expect("try_clone failed");
+    match handle_ff_response(listener_copy) {
+        1 => {
+            return wait_child();
+        },
+        3 => return 1,
+        _ => return 0,
+
+    }
+}
+
+fn handle_ff_response(listener: UnixListener) -> u8 {
     match listener.accept() {
         Ok((mut stream, _addr)) => {
             let mut buffer = Vec::new();
@@ -132,25 +144,29 @@ fn wait_child() -> u8 {
                 buffer.push(byte[0]);
             }
             let message = String::from_utf8(buffer).unwrap();
-            if &message == "app_started" {
-                println!("Got a socket connection, app started"); 
-                return 0;                
-            } else if &message == "app_checkpointed" {
-                println!("Got a socket connection, app checkpointed");
-                return 0;
-            } else if &message == "app_exiting" {
-                println!("App exited");
-                return 1;
-            } else {
-                println!("Unknown Message to sock");
-                return 1;
+            let msg_col = message.split(" ").collect::<Vec<&str>>();
+            match msg_col[0] {
+                "app_started" => {
+                    println!("Got a socket connection, app started"); 
+                    return 0;                
+                }, 
+                "app_checkpointed" => {
+                    println!("Got a socket connection, app checkpointed");
+                    return 1;
+                },
+                "app_exiting" => {
+                    println!("App exited with exit_code {}",msg_col[1]);
+                    return 2;
+                }, 
+                _ => {
+                    println!("Unknown Message to sock");
+                    return 3;
+                }
             }
         },
         Err(e) => {
                 println!("accept function failed: {e:?}");
                 return 1;
         },
-    }
+    } 
 }
-
-          
