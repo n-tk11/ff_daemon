@@ -52,12 +52,19 @@ async fn handle_connection(req: Request<Body>) -> Result<Response<Body>, Infalli
             }
             
             match wait_child() {
-                0 => (),
-                _ => return Ok(Response::builder()
+                (0,_) => (),
+                (2,ec) => {
+                    let exit_msg = format!("App Exited with exit_code {}\n",ec);
+                    return Ok(Response::builder()
+                .status(hyper::StatusCode::INTERNAL_SERVER_ERROR)
+                .body(Body::from(exit_msg.to_string()))
+                .unwrap())
+                }, 
+                (_,_) => return Ok(Response::builder()
                 .status(hyper::StatusCode::INTERNAL_SERVER_ERROR)
                 .body(Body::from(""))
                 .unwrap()) 
-            }
+            } 
 
             Ok(Response::builder()
                 .status(hyper::StatusCode::OK)
@@ -75,8 +82,15 @@ async fn handle_connection(req: Request<Body>) -> Result<Response<Body>, Infalli
                 .unwrap());
             }
             match wait_child() {
-                0 => (),
-                _ => return Ok(Response::builder()
+                (1,_) => (),
+                (2,ec) => {
+                let exit_msg = format!("App Exited with exit_code {}\n",ec);
+                    return Ok(Response::builder()
+                .status(hyper::StatusCode::INTERNAL_SERVER_ERROR)
+                .body(Body::from(exit_msg.to_string()))
+                .unwrap())
+                }, 
+                (_,_) => return Ok(Response::builder()
                 .status(hyper::StatusCode::INTERNAL_SERVER_ERROR)
                 .body(Body::from(""))
                 .unwrap()) 
@@ -104,34 +118,22 @@ async fn shutdown_signal() {
         .expect("failed to install CTRL+C signal handler");
 }
 
-fn wait_child() -> u8 {
+fn wait_child() -> (u8,String) {
     let socket_path = "/tmp/ff.sock";
     match std::fs::remove_file(socket_path) {
         Ok(_) => println!("Previous socket file removed"),
         Err(e) if e.kind() == ErrorKind::NotFound => (),
-        _ => return 0,
+        _ => return (0,String::from("0")),
     }
 
     let listener = match UnixListener::bind(socket_path) {
         Ok(sock) => sock,
         Err(e) => {
             println!("Couldn't connect: {e:?}");
-            return 1;
+            return (3,String::from("0"));
         }
     };
     println!("Waiting for child response");
-    let listener_copy = listener.try_clone().expect("try_clone failed");
-    match handle_ff_response(listener_copy) {
-        1 => {
-            return wait_child();
-        },
-        3 => return 1,
-        _ => return 0,
-
-    }
-}
-
-fn handle_ff_response(listener: UnixListener) -> u8 {
     match listener.accept() {
         Ok((mut stream, _addr)) => {
             let mut buffer = Vec::new();
@@ -148,25 +150,25 @@ fn handle_ff_response(listener: UnixListener) -> u8 {
             match msg_col[0] {
                 "app_started" => {
                     println!("Got a socket connection, app started"); 
-                    return 0;                
+                    return (0,String::from("0"));                
                 }, 
                 "app_checkpointed" => {
                     println!("Got a socket connection, app checkpointed");
-                    return 1;
+                    return (1,String::from("0"));
                 },
                 "app_exiting" => {
                     println!("App exited with exit_code {}",msg_col[1]);
-                    return 2;
+                    return (2,String::from(msg_col[1]));
                 }, 
                 _ => {
                     println!("Unknown Message to sock");
-                    return 3;
+                    return (3,String::from("0"));
                 }
             }
         },
         Err(e) => {
                 println!("accept function failed: {e:?}");
-                return 1;
+                return (3,String::from("0"));
         },
     } 
 }
