@@ -10,6 +10,7 @@ use std::convert::Infallible;
 //use std::fs::File;
 use std::os::unix::net::{UnixListener};
 use std::io::{ErrorKind,Read};
+use std::fs;
 
 use crate::execute::*;
 /*
@@ -20,9 +21,38 @@ pub struct Daemon {
 }
 */
 
+use std::path::PathBuf;
+use structopt::StructOpt;
+
+#[derive(Debug, StructOpt)]
+struct Opts {
+
+    #[structopt(short,long)]
+    port: Option<u16>,
+
+    #[structopt(short,long,parse(from_os_str))]
+    entry: Option<PathBuf>,
+
+}
+
+
 #[tokio::main]
 async fn main() {
-    let addr = ([127, 0, 0, 1], 7878).into();
+    let opts = Opts::from_args();
+    match opts.entry {
+        Some(entry_path) => {
+            let entry_data = fs::read_to_string(entry_path).unwrap();
+            if run_execute(entry_data)!=0 {
+                println!("Cannot start the app going to enter standby mode");
+            }
+        },
+        None => ()
+    }
+    let port_num: u16 = match opts.port {
+        Some(pn) => pn,
+        None => 7878
+    };
+    let addr = ([127, 0, 0, 1], port_num).into();
     let make_svc =
         make_service_fn(|_conn| async { Ok::<_, Infallible>(service_fn(handle_connection)) });
 
