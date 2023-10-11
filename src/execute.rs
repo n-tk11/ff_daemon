@@ -1,7 +1,9 @@
 use serde::{Serialize, Deserialize};
 use serde_json;
-use std::process::Command;
+use std::process::{Command,Child};
+use std::thread;
 use shlex::Shlex;
+
 
 //Run Json Instance
 #[derive(Debug, Serialize, Deserialize)]
@@ -92,17 +94,16 @@ pub fn run_execute(body_str: String) -> u8 {
         let parts: Vec<&str> = env.split('=').collect();
         cmd.env(parts[0],parts[1]);
     }
+    
+    let _ = thread::spawn(move ||{
+        let mut child_process: Child = cmd.spawn().expect("Failed to start ff.run process");
+
+        let status = child_process.wait().expect("Failed to wait for ff.run process");
         
-    match cmd.spawn() {
-        Ok(_) => {
-            println!("FF run spawned successfully");
-            0
-        },
-        Err(e) => {
-            println!("FF run failed to spawn: {e:?}");
-            1
-        }
-    }
+        println!("ff.chk process exited with status: {:?}", status);
+    });
+
+    return 0;
 }
 
 
@@ -143,17 +144,15 @@ pub fn checkpoint_execute(body_str: String) -> u8 {
         let parts: Vec<&str> = env.split('=').collect();
         cmd.env(parts[0],parts[1]);
     }
+   
+    let _ = thread::spawn(move ||{
+        let mut child_process: Child = cmd.spawn().expect("Failed to start ff.chk process");
 
-    match cmd.spawn() {
-        Ok(_) => {
-            println!("FF chk spawned successfully");
-            0
-        },
-        Err(e) => {
-            println!("FF chk failed to spawn: {e:?}");
-            1
-        }
-    }
+        let status = child_process.wait().expect("Failed to wait for ff.chk process");
+        
+        println!("ff.chk process exited with status: {:?}", status);
+    });
+    return 0;
 }
 
 fn default_blanks() -> String {
