@@ -41,10 +41,7 @@ async fn main() {
     let opts = Opts::from_args();
     match opts.entry {
         Some(entry_path) => {
-            let entry_data = fs::read_to_string(entry_path).unwrap();
-            if run_execute(entry_data)!=0 {
-                println!("Cannot start the app going to enter standby mode");
-            }
+            entry_mode(entry_path);
         },
         None => ()
     }
@@ -74,7 +71,7 @@ async fn handle_connection(req: Request<Body>) -> Result<Response<Body>, Infalli
             let body_bytes = hyper::body::to_bytes(req.into_body()).await.unwrap();
             let body_str = String::from_utf8(body_bytes.to_vec()).unwrap();
 
-            if run_execute(body_str)!=0 {
+            if run_execute(body_str,false)!=0 {
                return Ok(Response::builder()
                 .status(hyper::StatusCode::INTERNAL_SERVER_ERROR)
                 .body(Body::from("Fail to spawn child to run FF\n"))
@@ -201,4 +198,29 @@ fn wait_child() -> (u8,String) {
                 return (3,String::from("0"));
         },
     } 
+}
+
+
+fn entry_mode(entry_path: PathBuf) {
+    let decider_path = PathBuf::from("/decider.txt");
+    let decider =fs::read_to_string(decider_path).unwrap();
+    if let Some(first_char) = decider.chars().next() {
+        if first_char == '2' {
+            println!("Continue to standby mode");
+        } else  {
+            let entry_data = fs::read_to_string(entry_path).unwrap();
+            let is_begin;
+            if first_char == '0' {
+                println!("Will Start From Scratch!!");
+                is_begin = true;
+            }else {
+                is_begin = false;
+            }
+            if run_execute(entry_data,is_begin)!=0 {
+                println!("Cannot start the app going to enter standby mode");
+            }
+        }
+    } else {
+        println!("Not a string");
+    }
 }
