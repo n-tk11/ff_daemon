@@ -22,7 +22,19 @@ pub struct Daemon {
 
 #[tokio::main]
 async fn main() {
-    let addr = ([127, 0, 0, 1], 7878).into();
+    let addr = ([0, 0, 0, 0], 7878).into();
+    let opts = Opts::from_args();
+    match opts.entry {
+        Some(entry_path) => {
+            entry_mode(entry_path);
+        },
+        None => ()
+    }
+    let port_num: u16 = match opts.port {
+        Some(pn) => pn,
+        None => 7878
+    };
+    let addr = ([0, 0, 0, 0], port_num).into();
     let make_svc =
         make_service_fn(|_conn| async { Ok::<_, Infallible>(service_fn(handle_connection)) });
 
@@ -171,4 +183,29 @@ fn wait_child() -> (u8,String) {
                 return (3,String::from("0"));
         },
     } 
+}
+
+
+fn entry_mode(entry_path: PathBuf) {
+    let decider_path = PathBuf::from("/decider.txt");
+    let decider =fs::read_to_string(decider_path).unwrap();
+    if let Some(first_char) = decider.chars().next() {
+        if first_char == '2' {
+            println!("Continue to standby mode");
+        } else  {
+            let entry_data = fs::read_to_string(entry_path).unwrap();
+            let is_begin;
+            if first_char == '0' {
+                println!("Will Start From Scratch!!");
+                is_begin = true;
+            }else {
+                is_begin = false;
+            }
+            if run_execute(entry_data,is_begin)!=0 {
+                println!("Cannot start the app going to enter standby mode");
+            }
+        }
+    } else {
+        println!("Not a string");
+    }
 }
