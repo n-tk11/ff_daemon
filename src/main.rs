@@ -38,6 +38,8 @@ struct Opts {
 
 #[tokio::main]
 async fn main() {
+
+    let addr = ([0, 0, 0, 0], 7878).into();
     let opts = Opts::from_args();
     match opts.entry {
         Some(entry_path) => {
@@ -49,9 +51,7 @@ async fn main() {
         Some(pn) => pn,
         None => 7878
     };
-    let addr = ([127, 0, 0, 1], port_num).into();
-    let make_svc =
-        make_service_fn(|_conn| async { Ok::<_, Infallible>(service_fn(handle_connection)) });
+    let make_svc = make_service_fn(|_conn| async { Ok::<_, Infallible>(service_fn(handle_connection)) });
 
     let server = Server::bind(&addr).serve(make_svc);
 
@@ -224,3 +224,4 @@ fn entry_mode(entry_path: PathBuf) {
         println!("Not a string");
     }
 }
+
