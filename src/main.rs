@@ -10,6 +10,7 @@ use std::convert::Infallible;
 //use std::fs::File;
 use std::os::unix::net::{UnixListener};
 use std::io::{ErrorKind,Read};
+use std::fs;
 
 use crate::execute::*;
 /*
@@ -20,8 +21,24 @@ pub struct Daemon {
 }
 */
 
+use std::path::PathBuf;
+use structopt::StructOpt;
+
+#[derive(Debug, StructOpt)]
+struct Opts {
+
+    #[structopt(short,long)]
+    port: Option<u16>,
+
+    #[structopt(short,long,parse(from_os_str))]
+    entry: Option<PathBuf>,
+
+}
+
+
 #[tokio::main]
 async fn main() {
+
     let addr = ([0, 0, 0, 0], 7878).into();
     let opts = Opts::from_args();
     match opts.entry {
@@ -34,9 +51,7 @@ async fn main() {
         Some(pn) => pn,
         None => 7878
     };
-    let addr = ([0, 0, 0, 0], port_num).into();
-    let make_svc =
-        make_service_fn(|_conn| async { Ok::<_, Infallible>(service_fn(handle_connection)) });
+    let make_svc = make_service_fn(|_conn| async { Ok::<_, Infallible>(service_fn(handle_connection)) });
 
     let server = Server::bind(&addr).serve(make_svc);
 
@@ -56,7 +71,7 @@ async fn handle_connection(req: Request<Body>) -> Result<Response<Body>, Infalli
             let body_bytes = hyper::body::to_bytes(req.into_body()).await.unwrap();
             let body_str = String::from_utf8(body_bytes.to_vec()).unwrap();
 
-            if run_execute(body_str)!=0 {
+            if run_execute(body_str,false)!=0 {
                return Ok(Response::builder()
                 .status(hyper::StatusCode::INTERNAL_SERVER_ERROR)
                 .body(Body::from("Fail to spawn child to run FF\n"))
@@ -209,3 +224,4 @@ fn entry_mode(entry_path: PathBuf) {
         println!("Not a string");
     }
 }
+

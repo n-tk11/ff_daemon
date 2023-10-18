@@ -49,7 +49,7 @@ struct Checkpointj {
     envs: Vec<String>,
 }
 
-pub fn run_execute(body_str: String) -> u8 {
+pub fn run_execute(body_str: String, is_begin: bool) -> u8 {
 
     //Parse Json into cmd args and call run
     let r: Runj = serde_json::from_str(&body_str).unwrap();
@@ -69,7 +69,7 @@ pub fn run_execute(body_str: String) -> u8 {
     if r.preserved_paths.as_str() != "" {
         cmd.arg("--preserve-path").arg(&r.preserved_paths); 
     }
-    if r.no_restore {
+    if r.no_restore || is_begin{
         cmd.arg("--no-restore");
     }
     if r.allow_bad_image {
