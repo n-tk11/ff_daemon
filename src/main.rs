@@ -33,17 +33,19 @@ struct Opts {
     #[structopt(short,long,parse(from_os_str))]
     entry: Option<PathBuf>,
 
+    #[structopt(short,long,parse(from_os_str))]
+    decider_path: Option<PathBuf>,
+
 }
 
 
 #[tokio::main]
 async fn main() {
 
-    let addr = ([0, 0, 0, 0], 7878).into();
     let opts = Opts::from_args();
     match opts.entry {
         Some(entry_path) => {
-            entry_mode(entry_path);
+            entry_mode(entry_path,opts.decider_path);
         },
         None => ()
     }
@@ -53,6 +55,7 @@ async fn main() {
     };
     let make_svc = make_service_fn(|_conn| async { Ok::<_, Infallible>(service_fn(handle_connection)) });
 
+    let addr = ([0, 0, 0, 0], port_num).into();
     let server = Server::bind(&addr).serve(make_svc);
 
     println!("Listening on http://{}", addr);
@@ -201,14 +204,36 @@ fn wait_child() -> (u8,String) {
 }
 
 
-fn entry_mode(entry_path: PathBuf) {
-    let decider_path = PathBuf::from("/decider.txt");
-    let decider =fs::read_to_string(decider_path).unwrap();
+fn entry_mode(entry_path: PathBuf, decider_path: Option<PathBuf>) {
+    let decider_path = match decider_path {
+        Some(path) => path,
+        None => PathBuf::from("/decider.txt"),
+    };
+    let decider = match fs::read_to_string(decider_path) {
+        Ok(contents) => {
+            contents
+        }
+        Err(error) => match error.kind() {
+            ErrorKind::NotFound => {
+                println!("Decider file not found");
+                String::from("2")
+            }
+            _ => {
+                panic!("Error reading file: {}", error);
+            }
+        },
+    };
     if let Some(first_char) = decider.chars().next() {
         if first_char == '2' {
             println!("Continue to standby mode");
         } else  {
-            let entry_data = fs::read_to_string(entry_path).unwrap();
+            let entry_data = match fs::read_to_string(entry_path) {
+                Ok(content) => content,
+                Err(_) => {
+                   println!("Error reading Entry data,Continue to standby mode");
+                   return 
+                }
+            };
             let is_begin;
             if first_char == '0' {
                 println!("Will Start From Scratch!!");
