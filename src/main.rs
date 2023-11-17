@@ -10,7 +10,7 @@ use std::convert::Infallible;
 //use std::fs::File;
 use std::os::unix::net::{UnixListener};
 use std::io::{ErrorKind,Read};
-use std::fs;
+use std::{fs,process};
 
 use crate::execute::*;
 /*
@@ -243,6 +243,21 @@ fn entry_mode(entry_path: PathBuf, decider_path: Option<PathBuf>) {
             }
             if run_execute(entry_data,is_begin)!=0 {
                 println!("Cannot start the app going to enter standby mode");
+            } else {
+                //This match wait for app to start.
+                match wait_child() {
+                    (0,_) => (),
+                    (2,ec) => {
+                        println!("App Exited with exit_code {}\n",ec);
+                        let ec_int = ec.parse::<i32>().unwrap();
+                        process::exit(ec_int);
+                    }, 
+                    (_,_) => {
+                        println!("Unknown Error!!");
+                        process::exit(1);
+                    }
+                } 
+                
             }
         }
     } else {

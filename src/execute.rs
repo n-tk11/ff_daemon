@@ -1,6 +1,6 @@
 use serde::{Serialize, Deserialize};
 use serde_json;
-use std::process::{Command,Child};
+use std::process::{Command,Child,exit};
 use std::thread;
 use shlex::Shlex;
 
@@ -100,7 +100,14 @@ pub fn run_execute(body_str: String, is_begin: bool) -> u8 {
 
         let status = child_process.wait().expect("Failed to wait for ff.run process");
         
-        println!("ff.chk process exited with status: {:?}", status);
+        //println!("ff.run process exited with status: {:?}", status);
+        match status.code() {
+            Some(code) => {
+                println!("ff.run exited with status code: {code}");
+                exit(code);
+            },
+            None => println!("Process terminated by signal")
+        }
     });
 
     return 0;
