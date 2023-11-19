@@ -36,6 +36,8 @@ struct Opts {
     #[structopt(short,long,parse(from_os_str))]
     decider_path: Option<PathBuf>,
 
+    #[structopt(short,long)]
+    kill_exit: bool,
 }
 
 
@@ -45,7 +47,7 @@ async fn main() {
     let opts = Opts::from_args();
     match opts.entry {
         Some(entry_path) => {
-            entry_mode(entry_path,opts.decider_path);
+            entry_mode(entry_path,opts.decider_path,opts.kill_exit);
         },
         None => ()
     }
@@ -53,7 +55,15 @@ async fn main() {
         Some(pn) => pn,
         None => 7878
     };
-    let make_svc = make_service_fn(|_conn| async { Ok::<_, Infallible>(service_fn(handle_connection)) });
+
+    let make_svc = make_service_fn(move |_conn| {
+        let exit_kill = opts.kill_exit.clone();
+        async move{
+            Ok::<_, Infallible>(service_fn(move |req| {
+                handle_connection(req, exit_kill.clone())
+            })) 
+        }
+    });
 
     let addr = ([0, 0, 0, 0], port_num).into();
     let server = Server::bind(&addr).serve(make_svc);
@@ -66,7 +76,7 @@ async fn main() {
     let _ = graceful.await;
 }
 
-async fn handle_connection(req: Request<Body>) -> Result<Response<Body>, Infallible> {
+async fn handle_connection(req: Request<Body>, exit_kill: bool) -> Result<Response<Body>, Infallible> {
 
     match (req.method(), req.uri().path()) {
         
@@ -74,7 +84,7 @@ async fn handle_connection(req: Request<Body>) -> Result<Response<Body>, Infalli
             let body_bytes = hyper::body::to_bytes(req.into_body()).await.unwrap();
             let body_str = String::from_utf8(body_bytes.to_vec()).unwrap();
 
-            if run_execute(body_str,false)!=0 {
+            if run_execute(body_str,false,exit_kill)!=0 {
                return Ok(Response::builder()
                 .status(hyper::StatusCode::INTERNAL_SERVER_ERROR)
                 .body(Body::from("Fail to spawn child to run FF\n"))
@@ -204,7 +214,7 @@ fn wait_child() -> (u8,String) {
 }
 
 
-fn entry_mode(entry_path: PathBuf, decider_path: Option<PathBuf>) {
+fn entry_mode(entry_path: PathBuf, decider_path: Option<PathBuf>,exit_kill: bool) {
     let decider_path = match decider_path {
         Some(path) => path,
         None => PathBuf::from("/decider.txt"),
@@ -241,7 +251,7 @@ fn entry_mode(entry_path: PathBuf, decider_path: Option<PathBuf>) {
             }else {
                 is_begin = false;
             }
-            if run_execute(entry_data,is_begin)!=0 {
+            if run_execute(entry_data,is_begin,exit_kill)!=0 {
                 println!("Cannot start the app going to enter standby mode");
             } else {
                 //This match wait for app to start.

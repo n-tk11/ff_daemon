@@ -49,7 +49,7 @@ struct Checkpointj {
     envs: Vec<String>,
 }
 
-pub fn run_execute(body_str: String, is_begin: bool) -> u8 {
+pub fn run_execute(body_str: String, is_begin: bool, exit_kill: bool) -> u8 {
 
     //Parse Json into cmd args and call run
     let r: Runj = serde_json::from_str(&body_str).unwrap();
@@ -104,7 +104,9 @@ pub fn run_execute(body_str: String, is_begin: bool) -> u8 {
         match status.code() {
             Some(code) => {
                 println!("ff.run exited with status code: {code}");
-                exit(code);
+                if exit_kill {
+                    exit(code);
+                }
             },
             None => println!("Process terminated by signal")
         }
