@@ -9,8 +9,9 @@ use hyper::{Body, Method, Request, Response, Server};
 use std::convert::Infallible;
 //use std::fs::File;
 use std::os::unix::net::{UnixListener};
-use std::io::{ErrorKind,Read};
+use std::io::{ErrorKind,Read,Write,BufWriter};
 use std::{fs,process};
+use std::fs::OpenOptions;
 
 use crate::execute::*;
 /*
@@ -68,6 +69,8 @@ async fn main() {
     let addr = ([0, 0, 0, 0], port_num).into();
     let server = Server::bind(&addr).serve(make_svc);
 
+    
+    write_status_to_pipe(0);
     println!("Listening on http://{}", addr);
 
     let graceful = server.with_graceful_shutdown(shutdown_signal());
@@ -106,6 +109,8 @@ async fn handle_connection(req: Request<Body>, exit_kill: bool) -> Result<Respon
                 .unwrap()) 
             } 
 
+            write_status_to_pipe(1);
+
             Ok(Response::builder()
                 .status(hyper::StatusCode::OK)
                 .body(Body::from("App start successfully\n"))
@@ -135,6 +140,8 @@ async fn handle_connection(req: Request<Body>, exit_kill: bool) -> Result<Respon
                 .body(Body::from(""))
                 .unwrap()) 
             } 
+            
+            write_status_to_pipe(2);
 
             Ok(Response::builder()
                 .status(hyper::StatusCode::OK)
@@ -236,11 +243,13 @@ fn entry_mode(entry_path: PathBuf, decider_path: Option<PathBuf>,exit_kill: bool
     if let Some(first_char) = decider.chars().next() {
         if first_char == '2' {
             println!("Continue to standby mode");
+            write_status_to_pipe(0);
         } else  {
             let entry_data = match fs::read_to_string(entry_path) {
                 Ok(content) => content,
                 Err(_) => {
                    println!("Error reading Entry data,Continue to standby mode");
+                   write_status_to_pipe(0);
                    return 
                 }
             };
@@ -253,6 +262,7 @@ fn entry_mode(entry_path: PathBuf, decider_path: Option<PathBuf>,exit_kill: bool
             }
             if run_execute(entry_data,is_begin,exit_kill)!=0 {
                 println!("Cannot start the app going to enter standby mode");
+                write_status_to_pipe(0);
             } else {
                 //This match wait for app to start.
                 match wait_child() {
@@ -267,7 +277,7 @@ fn entry_mode(entry_path: PathBuf, decider_path: Option<PathBuf>,exit_kill: bool
                         process::exit(1);
                     }
                 } 
-                
+                write_status_to_pipe(1); 
             }
         }
     } else {
@@ -275,3 +285,24 @@ fn entry_mode(entry_path: PathBuf, decider_path: Option<PathBuf>,exit_kill: bool
     }
 }
 
+fn write_status_to_pipe(status: u8) {
+//Write to named pipe to let controller know
+    let pipe_path = "/opt/controller/pipes/status";
+    let file = match OpenOptions::new().write(true).truncate(true).create(true).open(pipe_path) {
+        Ok(file) => file,
+        Err(error) => match error.kind() {
+            ErrorKind::NotFound => return,
+            other_error => {
+                panic!("Problem opening the file: {:?}", other_error);
+            }
+        }
+    };
+    let mut file = BufWriter::new(file);
+    if status == 0 {
+        file.write_all(b"0").unwrap();
+    }else if status == 1 {
+        file.write_all(b"1").unwrap();
+    }else {
+        file.write_all(b"2").unwrap();
+    }
+}
