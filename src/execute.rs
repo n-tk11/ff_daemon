@@ -3,8 +3,8 @@ use serde_json;
 use std::process::{Command,Child,exit};
 use std::thread;
 use shlex::Shlex;
-
-
+use std::io::{ErrorKind,Write,BufWriter};
+use std::fs::OpenOptions;
 //Run Json Instance
 #[derive(Debug, Serialize, Deserialize)]
 struct Runj {
@@ -39,8 +39,8 @@ struct Checkpointj {
     preserved_paths: String,
     #[serde(default = "default_false")]
     leave_running: bool,
-    #[serde(default = "default_blanks")]
-    num_shards: String,
+    #[serde(default = "default_four")]
+    num_shards: u8,
     #[serde(default = "default_blanks")]
     cpu_budget: String,
     #[serde(default = "default_zero")]
@@ -103,6 +103,7 @@ pub fn run_execute(body_str: String, is_begin: bool, exit_kill: bool) -> u8 {
         //println!("ff.run process exited with status: {:?}", status);
         match status.code() {
             Some(code) => {
+                write_status_to_pipe((3+code).try_into().unwrap());
                 println!("ff.run exited with status code: {code}");
                 if exit_kill {
                     exit(code);
@@ -134,8 +135,8 @@ pub fn checkpoint_execute(body_str: String) -> u8 {
     if r.preserved_paths.as_str() != "" {
         cmd.arg("--preserve-path").arg(&r.preserved_paths); 
     }
-    if r.num_shards.as_str() != ""{
-        cmd.arg("--num-shards").arg(&r.num_shards); 
+    if r.num_shards > 0{
+        cmd.arg("--num-shards").arg(r.num_shards.to_string()); 
     }
     if r.cpu_budget.as_str() != ""{
         cmd.arg("--cpu-budget").arg(&r.cpu_budget); 
@@ -175,6 +176,32 @@ fn default_false() -> bool {
 fn default_zero() -> u8 {
     0
 }
+
+fn default_four() -> u8 {
+    4
+}
 fn default_blankv() -> Vec<String> {
     vec![]
+}
+
+fn write_status_to_pipe(status: u8) {
+//Write to named pipe to let controller know
+    let pipe_path = "/opt/controller/pipes/status";
+    let file = match OpenOptions::new().write(true).truncate(true).create(true).open(pipe_path) {
+        Ok(file) => file,
+        Err(error) => match error.kind() {
+            ErrorKind::NotFound => return,
+            other_error => {
+                panic!("Problem opening the file: {:?}", other_error);
+            }
+        }
+    };
+    let mut file = BufWriter::new(file);
+    if status == 0 {
+        file.write_all(b"0").unwrap();
+    }else if status == 1 {
+        file.write_all(b"1").unwrap();
+    }else {
+        file.write_all(b"2").unwrap();
+    }
 }

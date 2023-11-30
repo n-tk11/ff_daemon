@@ -290,12 +290,7 @@ fn write_status_to_pipe(status: u8) {
     let pipe_path = "/opt/controller/pipes/status";
     let file = match OpenOptions::new().write(true).truncate(true).create(true).open(pipe_path) {
         Ok(file) => file,
-        Err(error) => match error.kind() {
-            ErrorKind::NotFound => return,
-            other_error => {
-                panic!("Problem opening the file: {:?}", other_error);
-            }
-        }
+        Err(_) => return,
     };
     let mut file = BufWriter::new(file);
     if status == 0 {
