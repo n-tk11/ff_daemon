@@ -103,7 +103,7 @@ pub fn run_execute(body_str: String, is_begin: bool, exit_kill: bool) -> u8 {
         //println!("ff.run process exited with status: {:?}", status);
         match status.code() {
             Some(code) => {
-                write_status_to_pipe((3+code).try_into().unwrap());
+                write_status_to_pipe(0);
                 println!("ff.run exited with status code: {code}");
                 if exit_kill {
                     exit(code);
@@ -186,7 +186,7 @@ fn default_blankv() -> Vec<String> {
 
 fn write_status_to_pipe(status: u8) {
 //Write to named pipe to let controller know
-    let pipe_path = "/opt/controller/pipes/status";
+    let pipe_path = "/opt/controller/comms/status";
     let file = match OpenOptions::new().write(true).truncate(true).create(true).open(pipe_path) {
         Ok(file) => file,
         Err(error) => match error.kind() {
