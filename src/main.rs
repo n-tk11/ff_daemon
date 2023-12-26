@@ -287,7 +287,7 @@ fn entry_mode(entry_path: PathBuf, decider_path: Option<PathBuf>,exit_kill: bool
 
 fn write_status_to_pipe(status: u8) {
 //Write to named pipe to let controller know
-    let pipe_path = "/opt/controller/pipes/status";
+    let pipe_path = "/opt/controller/comms/status";
     let file = match OpenOptions::new().write(true).truncate(true).create(true).open(pipe_path) {
         Ok(file) => file,
         Err(_) => return,
